@@ -76,6 +76,20 @@ def ingest_local_images(source_dir):
             print(f"    ERROR copying {name}: {e}")
 
 
+def _count_files(dir_path):
+    if not os.path.isdir(dir_path):
+        return 0
+    return sum(1 for f in os.listdir(dir_path) if os.path.isfile(os.path.join(dir_path, f)))
+
+
+def count_accepted():
+    return _count_files(ACCEPTED_DIR)
+
+
+def count_rejected():
+    return _count_files(REJECTED_DIR)
+
+
 def list_pending_images():
     return sorted(
         f for f in os.listdir(DOWNLOADS_DIR)

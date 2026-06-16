@@ -83,6 +83,8 @@ def run_upload_batches():
 def main():
     while True:
         print(MENU)
+        print(f"  accepted/: {image_review.count_accepted()} image(s)   "
+              f"rejected/: {image_review.count_rejected()} image(s)\n")
         choice = input("Choose an option: ").strip()
 
         if choice == '1':
