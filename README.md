@@ -119,7 +119,11 @@ This matters for the recurring-cycle workflow: if accepted images stuck
 around in `accepted/`, the next Batch Sort run would re-batch (and later
 re-upload) photos already handled in an earlier cycle. Moving them keeps
 `accepted/` representing only "not yet batched" images.
-Duplicate filenames across batches are automatically suffixed (e.g. `photo_001.jpg`).
+Duplicate filenames are automatically suffixed (e.g. `photo_001.jpg`) — this
+checks both the current run and whatever's already sitting in the target
+batch folder on disk, so re-running into a folder that already has files
+(e.g. after an interrupted run, or accidentally reusing the same "last batch
+number") renames around them instead of silently overwriting.
 
 ### 3) Clear Rejected
 
@@ -144,6 +148,33 @@ This requires upload permission (`drive.file` scope) in addition to the
 read-only scope used for downloading. If you set this project up before this
 feature existed, delete `token.json` once and re-run so it can re-authorize
 with the new scope.
+
+## Filename Collisions & Safety
+
+Two different images can legitimately share a filename (e.g. `IMG_0001.jpg`
+from two different cameras/source folders). The pipeline never overwrites one
+with the other:
+
+- **Ingest (Drive download or local folder → `downloads/`)** — before a file
+  is written, its name is checked against everything currently in
+  `downloads/`, `accepted/`, and `rejected/`. A collision gets suffixed
+  (`IMG_0001_1.jpg`, `IMG_0001_2.jpg`, ...) before it ever touches disk.
+- **Review (`downloads/` → `accepted/`/`rejected/`)** — safe by construction,
+  since ingest already guaranteed the name is free in both destination
+  folders.
+- **Batch Sort (`accepted/` → `batch_uploads/<batch>/`)** — checked against
+  both the files being moved in the current run *and* whatever already
+  exists in the destination batch folder on disk, so re-running Batch Sort
+  into a folder that's already partially populated (interrupted run, or
+  re-entering the same "last batch number" by mistake) suffixes the new
+  arrival instead of clobbering the old file.
+- **Upload (`batch_uploads/*` → Drive)** — a file already present by name in
+  the destination Drive folder is skipped, not re-uploaded or replaced, so
+  re-running an interrupted upload is safe.
+
+The one operation that's intentionally destructive is **Clear Rejected** —
+it permanently deletes everything in `rejected/`, gated behind a typed `yes`
+confirmation.
 
 ## Folder Structure
 

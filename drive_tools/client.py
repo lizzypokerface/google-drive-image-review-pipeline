@@ -24,7 +24,7 @@ def get_service():
     creds_path = os.path.join(PROJECT_ROOT, 'credentials.json')
 
     if os.path.exists(token_path):
-        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+        creds = Credentials.from_authorized_user_file(token_path)
         if not creds.has_scopes(SCOPES):
             creds = None
 

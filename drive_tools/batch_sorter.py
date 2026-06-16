@@ -25,15 +25,19 @@ def create_batch_folder(dest_root, year, number):
     return full_path
 
 
-def get_unique_filename(filename, tracker_dict):
-    if filename not in tracker_dict:
+def get_unique_filename(filename, target_folder, tracker_dict):
+    count = tracker_dict.get(filename, 0)
+    if count == 0 and not os.path.exists(os.path.join(target_folder, filename)):
         tracker_dict[filename] = 0
         return filename
 
-    tracker_dict[filename] += 1
-    count = tracker_dict[filename]
     name, ext = os.path.splitext(filename)
-    return f"{name}_{count:03d}{ext}"
+    while True:
+        count += 1
+        candidate = f"{name}_{count:03d}{ext}"
+        if not os.path.exists(os.path.join(target_folder, candidate)):
+            tracker_dict[filename] = count
+            return candidate
 
 
 def process_batches(file_list, dest_root, year, latest_folder_number, batch_size):
@@ -49,7 +53,7 @@ def process_batches(file_list, dest_root, year, latest_folder_number, batch_size
         print(f"--> Moving {len(current_batch_files)} file(s) to: {os.path.basename(target_folder)}")
 
         for src_full_path, original_filename in current_batch_files:
-            final_filename = get_unique_filename(original_filename, filename_tracker)
+            final_filename = get_unique_filename(original_filename, target_folder, filename_tracker)
             dst_file = os.path.join(target_folder, final_filename)
 
             try:

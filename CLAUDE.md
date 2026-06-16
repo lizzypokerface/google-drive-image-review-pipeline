@@ -73,8 +73,11 @@ scope addition — keep that check in mind if you ever add a new scope.
 - Collision-safe naming: `image_review.unique_destination()` checks across
   `downloads/`, `accepted/`, and `rejected/` before writing a new file, so
   same-named images from different source folders never overwrite each
-  other. `batch_sorter.get_unique_filename()` does the equivalent within a
-  batch run.
+  other. `batch_sorter.get_unique_filename()` does the equivalent for batch
+  moves — it checks both the in-run tracker dict and the target batch
+  folder on disk, since `shutil.move` overwrites silently on Windows when
+  the destination already exists (e.g. on a rerun into a partially-filled
+  batch folder).
 - Idempotent/skip-if-exists is the norm for anything that touches the
   network: `download_file` skips files already on disk, `uploader` skips
   files already present in the destination Drive folder. Follow this pattern
