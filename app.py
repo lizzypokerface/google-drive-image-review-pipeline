@@ -1,9 +1,13 @@
 import os
 
 from drive_tools.client import get_service
-from drive_tools import image_review, batch_sorter, uploader
+from drive_tools import image_review, batch_sorter, uploader, backup
 
-MENU = """
+
+def _menu():
+    accepted = image_review.count_accepted()
+    rejected = image_review.count_rejected()
+    return f"""
 ========================================
  Google Drive Image Pipeline
 ========================================
@@ -15,15 +19,20 @@ MENU = """
    Move everything in accepted/ into dated upload batches
    (batch_uploads/YEAR_NNNN/) of a fixed size.
 
-3) Clear Rejected
-   Permanently delete every file currently in rejected/.
-
-4) Upload Batches
+3) Upload Batches
    Upload every folder in batch_uploads/ to a Google Drive folder ID,
    each as its own subfolder there.
 
-5) Quit
+4) Clear Rejected
+   Permanently delete every file currently in rejected/.
+
+5) Backup Accepted Images
+   Zip everything in accepted/ to a timestamped archive, kept in backups/
+   and copied to a destination folder path you provide.
+
+6) Quit
 ========================================
+ Accepted: {accepted}  |  Rejected: {rejected}
 """
 
 _service = None
@@ -80,11 +89,17 @@ def run_upload_batches():
     uploader.upload_all_batches(get_drive_service(), folder_id)
 
 
+def run_backup_accepted():
+    dest_path = input("Enter a destination folder path to copy the backup zip to (blank to cancel): ").strip()
+    if not dest_path:
+        return
+    zip_file_name, zip_size = backup.backup_accepted(dest_path)
+    print(f"Backup created: {zip_file_name} ({zip_size:,} bytes)")
+
+
 def main():
     while True:
-        print(MENU)
-        print(f"  accepted/: {image_review.count_accepted()} image(s)   "
-              f"rejected/: {image_review.count_rejected()} image(s)\n")
+        print(_menu())
         choice = input("Choose an option: ").strip()
 
         if choice == '1':
@@ -92,10 +107,12 @@ def main():
         elif choice == '2':
             run_batch_sort()
         elif choice == '3':
-            clear_rejected()
-        elif choice == '4':
             run_upload_batches()
+        elif choice == '4':
+            clear_rejected()
         elif choice == '5':
+            run_backup_accepted()
+        elif choice == '6':
             print("Goodbye.")
             return
         else:
