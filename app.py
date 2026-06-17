@@ -1,9 +1,22 @@
 import os
 
-from drive_tools.client import get_service
+from drive_tools.client import get_service, PROJECT_ROOT
 from drive_tools import image_review, batch_sorter, uploader, backup
 
-MENU = """
+_ACCEPTED_DIR = os.path.join(PROJECT_ROOT, 'accepted')
+_REJECTED_DIR = os.path.join(PROJECT_ROOT, 'rejected')
+
+
+def _count_files(folder):
+    if not os.path.isdir(folder):
+        return 0
+    return sum(1 for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f)))
+
+
+def _menu():
+    accepted = _count_files(_ACCEPTED_DIR)
+    rejected = _count_files(_REJECTED_DIR)
+    return f"""
 ========================================
  Google Drive Image Pipeline
 ========================================
@@ -28,6 +41,7 @@ MENU = """
 
 6) Quit
 ========================================
+ Accepted: {accepted}  |  Rejected: {rejected}
 """
 
 _service = None
@@ -94,7 +108,7 @@ def run_backup_accepted():
 
 def main():
     while True:
-        print(MENU)
+        print(_menu())
         choice = input("Choose an option: ").strip()
 
         if choice == '1':
