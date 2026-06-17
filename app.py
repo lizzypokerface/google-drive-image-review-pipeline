@@ -3,7 +3,11 @@ import os
 from drive_tools.client import get_service
 from drive_tools import image_review, batch_sorter, uploader, backup
 
-MENU = """
+
+def _menu():
+    accepted = image_review.count_accepted()
+    rejected = image_review.count_rejected()
+    return f"""
 ========================================
  Google Drive Image Pipeline
 ========================================
@@ -28,6 +32,7 @@ MENU = """
 
 6) Quit
 ========================================
+ Accepted: {accepted}  |  Rejected: {rejected}
 """
 
 _service = None
@@ -94,9 +99,7 @@ def run_backup_accepted():
 
 def main():
     while True:
-        print(MENU)
-        print(f"  accepted/: {image_review.count_accepted()} image(s)   "
-              f"rejected/: {image_review.count_rejected()} image(s)\n")
+        print(_menu())
         choice = input("Choose an option: ").strip()
 
         if choice == '1':
