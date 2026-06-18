@@ -27,6 +27,31 @@ def clear_rejected():
     print(f"Deleted {len(names)} file(s) from rejected/.")
 
 
+def renumber_accepted():
+    files = sorted(
+        f for f in os.listdir(ACCEPTED_DIR)
+        if os.path.isfile(os.path.join(ACCEPTED_DIR, f)) and not f.startswith('.')
+    )
+    if not files:
+        print("No files in accepted/ to renumber.")
+        return 0
+
+    # Pass 1: rename to temp names to avoid collisions mid-rename.
+    temp_map = []
+    for i, name in enumerate(files, start=1):
+        ext = os.path.splitext(name)[1].lower()
+        tmp = f"_tmp_{i:06d}{ext}"
+        os.rename(os.path.join(ACCEPTED_DIR, name), os.path.join(ACCEPTED_DIR, tmp))
+        temp_map.append((tmp, ext, i))
+
+    # Pass 2: rename from temp to final names.
+    for tmp, ext, i in temp_map:
+        final = f"{i:06d}{ext}"
+        os.rename(os.path.join(ACCEPTED_DIR, tmp), os.path.join(ACCEPTED_DIR, final))
+
+    return len(files)
+
+
 def unique_destination(name):
     if (not os.path.exists(os.path.join(DOWNLOADS_DIR, name))
             and not os.path.exists(os.path.join(ACCEPTED_DIR, name))

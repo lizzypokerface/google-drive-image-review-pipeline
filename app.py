@@ -22,27 +22,31 @@ def _menu():
 2) Review Downloaded
    Review all downloaded folders from manifest.csv one by one.
 
-3) Batch Sort
+3) Renumber Accepted
+   Rename every file in accepted/ to a 6-digit sequence (000001.jpg,
+   000002.jpg, ...) sorted alphabetically. Preserves original extension.
+
+4) Batch Sort
    Move everything in accepted/ into dated upload batches
    (batch_uploads/YEAR_NNNN/) of a fixed size.
 
-4) Upload Batches
+5) Upload Batches
    Upload every folder in batch_uploads/ to a Google Drive folder ID,
    each as its own subfolder there.
 
-5) Clear Rejected
+6) Clear Rejected
    Permanently delete every file currently in rejected/.
 
-6) Backup Accepted Images
+7) Backup Accepted Images
    Zip everything in accepted/ to a timestamped archive, kept in backups/
    and copied to a destination folder path you provide.
 
-7) Manifest Builder
+8) Manifest Builder
    List all immediate child folders of a Drive parent folder ID into
    manifest.csv (folder, id, status=pending). Re-running is safe — existing
    folder IDs are skipped.
 
-8) Quit
+9) Quit
 ========================================
  Pending: {pending_count}  |  Downloaded: {downloaded_count}  |  Accepted: {accepted}  |  Rejected: {rejected}
 """
@@ -110,6 +114,20 @@ def review_downloaded():
         # Esc mid-review: leave status as 'downloaded' so next run resumes here.
 
 
+def run_renumber_accepted():
+    count = image_review.count_accepted()
+    if not count:
+        print("No files in accepted/ to renumber.")
+        return
+    print(f"This will rename {count} file(s) to 000001.ext, 000002.ext, ... (alphabetical order).")
+    confirm = input("Type 'yes' to confirm: ").strip().lower()
+    if confirm != 'yes':
+        print("Cancelled.")
+        return
+    renamed = image_review.renumber_accepted()
+    print(f"Renumbered {renamed} file(s).")
+
+
 def run_batch_sort():
     year = input("Year label for the batch folders (e.g. 2026): ").strip()
     if not year:
@@ -166,16 +184,18 @@ def main():
         elif choice == '2':
             review_downloaded()
         elif choice == '3':
-            run_batch_sort()
+            run_renumber_accepted()
         elif choice == '4':
-            run_upload_batches()
+            run_batch_sort()
         elif choice == '5':
-            clear_rejected()
+            run_upload_batches()
         elif choice == '6':
-            run_backup_accepted()
+            clear_rejected()
         elif choice == '7':
-            run_manifest_builder()
+            run_backup_accepted()
         elif choice == '8':
+            run_manifest_builder()
+        elif choice == '9':
             print("Goodbye.")
             return
         else:
