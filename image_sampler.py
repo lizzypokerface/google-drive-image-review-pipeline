@@ -2,6 +2,7 @@ import atexit
 import os
 import random
 import shutil
+from urllib.parse import quote
 
 import gradio as gr
 
@@ -22,6 +23,7 @@ def clear_temp():
     if os.path.exists(SAMPLE_TEMP):
         shutil.rmtree(SAMPLE_TEMP)
     os.makedirs(SAMPLE_TEMP, exist_ok=True)
+
 
 
 def list_subfolders(service, parent_id):
@@ -196,6 +198,35 @@ def build_ui():
             inputs=[paths_state, idx_state],
             outputs=[idx_state, image_display, counter_label, size_label],
         )
+
+        with gr.Accordion("SoundCloud Player", open=False):
+            gr.Markdown(
+                "Use a SoundCloud **set** URL, e.g. `https://soundcloud.com/chillhopdotcom/sets/the-best-of-essentials-summer`"
+            )
+            with gr.Row():
+                sc_input = gr.Textbox(
+                    label="SoundCloud Set URL",
+                    placeholder="https://soundcloud.com/artist/sets/set-name",
+                    scale=5,
+                )
+                sc_btn = gr.Button("Play", scale=1)
+            sc_player = gr.HTML("<p style='color:gray;font-size:0.9em'>Enter a SoundCloud set URL above and click Play.</p>")
+
+        def load_soundcloud(url):
+            if not url.strip():
+                return "<p style='color:gray;font-size:0.9em'>Enter a SoundCloud URL above and click Play.</p>"
+            src = (
+                "https://w.soundcloud.com/player/?"
+                f"url={quote(url.strip(), safe='')}"
+                "&auto_play=true&color=%23ff5500&hide_related=true"
+                "&show_comments=false&show_reposts=false"
+            )
+            return (
+                f'<iframe width="100%" height="166" scrolling="no" frameborder="no" '
+                f'allow="autoplay" src="{src}"></iframe>'
+            )
+
+        sc_btn.click(load_soundcloud, inputs=[sc_input], outputs=[sc_player])
 
     return demo
 
