@@ -8,25 +8,22 @@ A local, menu-driven CLI (`app.py`) that implements a recurring photo-vetting
 cycle against Google Drive: download images from a Drive folder or local
 folder, review them one by one (accept/reject), batch the accepted images
 into dated upload folders, clear out the rejected pile, then re-upload the
-batches back to Drive. See `README.md` for the full conceptual walkthrough
-("The Full Cycle" section) — read it before making behavioral changes, since
-the four menu options are designed to run in a specific order across
-repeated cycles.
+batches back to Drive. See `docs/workflow.md` for the full end-to-end walkthrough
+including the manifest-driven multi-folder flow — read it before making
+behavioral changes, since the menu options are designed to run in a specific
+order across repeated cycles.
 
 ## Commands
 
 ```
-pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib tqdm Pillow
-python app.py
-python -m py_compile app.py drive_tools\*.py   # syntax-check after edits
+uv sync                                         # install deps into .venv (first time or after pyproject.toml changes)
+uv run python app.py                            # run the app
+uv run python -m py_compile app.py drive_tools\*.py   # syntax-check after edits
 ```
 
-There is no test suite, linter, or build step. `conda activate base` provides
-a working Python interpreter with the dependencies installed in this dev
-environment (plain `python`/`py` may not resolve on PATH).
-
-Note: `requirements.txt` does not exist yet — dependencies are documented only
-in `README.md`'s `pip install` line.
+There is no test suite, linter, or build step. Dependencies are declared in
+`pyproject.toml`; `uv sync` resolves them into `.venv` and locks versions in
+`uv.lock`.
 
 ## Architecture
 
@@ -59,6 +56,29 @@ in `README.md`'s `pip install` line.
   `create_drive_folder` reuses an existing same-named Drive folder instead of
   duplicating it, and per-file uploads are skipped via `find_drive_child` if
   a same-named file already exists in the destination folder.
+- **`drive_tools/manifest.py`** — `build_manifest` lists immediate child
+  folders of a Drive parent into `manifest.csv` (folder, id, status). Helper
+  functions `read_rows`, `write_rows`, `update_status`, and `next_row` are
+  used by `app.py`'s manifest-driven `download_and_review` loop to track
+  progress across sessions. `MANIFEST_PATH` is in the repo root.
+- **`drive_tools/backup.py`** — `backup_accepted` zips `accepted/` to a
+  timestamped archive in `backups/` and copies it to a user-given path.
+  Does not move or delete anything in `accepted/`.
+
+### Manifest-driven flow
+
+When `manifest.csv` is present, option 1 (Download & Review) walks manifest
+rows automatically instead of prompting for a folder ID each time. Each
+subfolder downloads into `downloads/<sanitized_name>_<folder_id>/`; status
+moves `pending → downloaded → reviewed`. After a folder's review window
+closes with all images moved, the empty subfolder is deleted and the row is
+marked `reviewed`. If the user hits Esc early (status stays `downloaded`), the
+next run resumes that folder.
+
+**Preloading:** immediately after the current folder's download completes and
+before its review window opens, the next `pending` row is downloaded
+synchronously into its own subfolder and marked `downloaded`. This means from
+folder 2 onward, review starts immediately with no download wait.
 
 ## Auth / scopes
 

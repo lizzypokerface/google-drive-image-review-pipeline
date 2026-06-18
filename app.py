@@ -1,7 +1,9 @@
 import os
 
-from drive_tools.client import get_service
-from drive_tools import image_review, batch_sorter, uploader, backup
+from drive_tools.client import get_service, PROJECT_ROOT
+from drive_tools import image_review, batch_sorter, uploader, backup, manifest
+
+DOWNLOADS_DIR = os.path.join(PROJECT_ROOT, 'downloads')
 
 
 def _menu():
@@ -30,7 +32,12 @@ def _menu():
    Zip everything in accepted/ to a timestamped archive, kept in backups/
    and copied to a destination folder path you provide.
 
-6) Quit
+6) Manifest Builder
+   List all immediate child folders of a Drive parent folder ID into
+   manifest.csv (folder, id, status=pending). Re-running is safe — existing
+   folder IDs are skipped.
+
+7) Quit
 ========================================
  Accepted: {accepted}  |  Rejected: {rejected}
 """
@@ -46,17 +53,48 @@ def get_drive_service():
 
 
 def download_and_review():
-    while True:
-        source = input("Enter a Google Drive Folder ID or a local folder path (blank to return to menu): ").strip()
-        if not source:
-            return
+    if not os.path.exists(manifest.MANIFEST_PATH):
+        # Legacy flow: prompt for a Drive folder ID or local path each iteration.
+        while True:
+            source = input("Enter a Google Drive Folder ID or a local folder path (blank to return to menu): ").strip()
+            if not source:
+                return
+            if os.path.isdir(source):
+                image_review.ingest_local_images(source)
+            else:
+                image_review.download_images(get_drive_service(), source)
+            image_review.run_review()
+    else:
+        # Manifest flow: walk pending/downloaded rows in order.
+        while True:
+            row = manifest.next_row('downloaded') or manifest.next_row('pending')
+            if row is None:
+                print("All folders in manifest.csv have been reviewed.")
+                return
 
-        if os.path.isdir(source):
-            image_review.ingest_local_images(source)
-        else:
-            image_review.download_images(get_drive_service(), source)
+            safe_name = image_review.sanitize_folder_name(row['folder'])
+            subfolder = os.path.join(DOWNLOADS_DIR, f"{safe_name}_{row['id']}")
 
-        image_review.run_review()
+            if row['status'] == 'pending':
+                image_review.download_images_to(get_drive_service(), row['id'], subfolder)
+                manifest.update_status(row['id'], 'downloaded')
+
+            # Preload the next pending folder while the user hasn't started reviewing yet.
+            next_pending = manifest.next_row('pending')
+            if next_pending:
+                print("Preloading next folder — please don't close the program until this finishes.")
+                next_safe = image_review.sanitize_folder_name(next_pending['folder'])
+                next_subfolder = os.path.join(DOWNLOADS_DIR, f"{next_safe}_{next_pending['id']}")
+                image_review.download_images_to(get_drive_service(), next_pending['id'], next_subfolder)
+                manifest.update_status(next_pending['id'], 'downloaded')
+
+            image_review.run_review(working_dir=subfolder)
+
+            remaining = [f for f in os.listdir(subfolder) if os.path.isfile(os.path.join(subfolder, f))]
+            if not remaining:
+                os.rmdir(subfolder)
+                manifest.update_status(row['id'], 'reviewed')
+            # If user hit Esc early, leave status as 'downloaded' to resume next time.
 
 
 def run_batch_sort():
@@ -97,6 +135,14 @@ def run_backup_accepted():
     print(f"Backup created: {zip_file_name} ({zip_size:,} bytes)")
 
 
+def run_manifest_builder():
+    folder_id = input("Enter the parent Google Drive Folder ID (blank to cancel): ").strip()
+    if not folder_id:
+        return
+    added, skipped = manifest.build_manifest(get_drive_service(), folder_id)
+    print(f"Manifest updated: {added} rows added, {skipped} already present.")
+
+
 def main():
     while True:
         print(_menu())
@@ -113,6 +159,8 @@ def main():
         elif choice == '5':
             run_backup_accepted()
         elif choice == '6':
+            run_manifest_builder()
+        elif choice == '7':
             print("Goodbye.")
             return
         else:

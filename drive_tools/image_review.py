@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 import tkinter as tk
 from PIL import Image, ImageTk
@@ -42,7 +43,26 @@ def unique_destination(name):
         i += 1
 
 
-def download_images(service, folder_id):
+def _unique_in_dest(name, dest_dir):
+    """Collision-safe name for download_images_to: checks dest_dir, accepted/, and rejected/."""
+    dirs = (dest_dir, ACCEPTED_DIR, REJECTED_DIR)
+    if all(not os.path.exists(os.path.join(d, name)) for d in dirs):
+        return name
+    base, ext = os.path.splitext(name)
+    i = 1
+    while True:
+        candidate = f"{base}_{i}{ext}"
+        if all(not os.path.exists(os.path.join(d, candidate)) for d in dirs):
+            return candidate
+        i += 1
+
+
+def sanitize_folder_name(name):
+    return re.sub(r'[<>:"/\\|?*]', '', name).strip()
+
+
+def download_images_to(service, folder_id, dest_dir):
+    os.makedirs(dest_dir, exist_ok=True)
     ensure_dirs()
     print(f"Scanning folder {folder_id}...")
     files = list_items(service, folder_id, mime_filter='files')
@@ -52,11 +72,15 @@ def download_images(service, folder_id):
     print(f"Found {len(files)} file(s) — {len(images)} image(s), discarding {skipped} non-image file(s).")
 
     for file in images:
-        name = unique_destination(file['name'])
+        name = _unique_in_dest(file['name'], dest_dir)
         try:
-            download_file(service, file['id'], name, DOWNLOADS_DIR, int(file.get('size', 0)))
+            download_file(service, file['id'], name, dest_dir, int(file.get('size', 0)))
         except Exception as e:
             print(f"    ERROR downloading {file['name']}: {e}")
+
+
+def download_images(service, folder_id):
+    download_images_to(service, folder_id, DOWNLOADS_DIR)
 
 
 def ingest_local_images(source_dir):
@@ -90,18 +114,20 @@ def count_rejected():
     return _count_files(REJECTED_DIR)
 
 
-def list_pending_images():
+def list_pending_images(working_dir=None):
+    directory = working_dir if working_dir is not None else DOWNLOADS_DIR
     return sorted(
-        f for f in os.listdir(DOWNLOADS_DIR)
-        if f.lower().endswith(IMAGE_EXTS) and os.path.isfile(os.path.join(DOWNLOADS_DIR, f))
+        f for f in os.listdir(directory)
+        if f.lower().endswith(IMAGE_EXTS) and os.path.isfile(os.path.join(directory, f))
     )
 
 
 class ReviewApp:
-    def __init__(self, root):
+    def __init__(self, root, working_dir=None):
         self.root = root
+        self.working_dir = working_dir if working_dir is not None else DOWNLOADS_DIR
         self.root.title("Image Review")
-        self.images = list_pending_images()
+        self.images = list_pending_images(self.working_dir)
         self.total = len(self.images)
         self.index = 0
 
@@ -127,7 +153,7 @@ class ReviewApp:
             return
 
         name = self.images[self.index]
-        path = os.path.join(DOWNLOADS_DIR, name)
+        path = os.path.join(self.working_dir, name)
         try:
             img = Image.open(path)
             img.thumbnail(MAX_DISPLAY_SIZE)
@@ -140,7 +166,7 @@ class ReviewApp:
 
     def move_current(self, dest_dir):
         name = self.images[self.index]
-        src = os.path.join(DOWNLOADS_DIR, name)
+        src = os.path.join(self.working_dir, name)
         dst = os.path.join(dest_dir, name)
         try:
             shutil.move(src, dst)
@@ -156,13 +182,13 @@ class ReviewApp:
         self.move_current(REJECTED_DIR)
 
 
-def run_review():
+def run_review(working_dir=None):
     ensure_dirs()
-    images = list_pending_images()
+    images = list_pending_images(working_dir)
     if not images:
         print("No images to review.")
         return
 
     root = tk.Tk()
-    ReviewApp(root)
+    ReviewApp(root, working_dir=working_dir)
     root.mainloop()
