@@ -8,4 +8,5 @@ dependencies = [
     "google-auth-oauthlib",
     "tqdm",
     "Pillow",
+    "gradio",
 ]

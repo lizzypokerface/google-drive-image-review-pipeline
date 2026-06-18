@@ -76,6 +76,39 @@ is saved and future runs skip the browser step.
 
 ---
 
+## Image Sampler
+
+A standalone Gradio tool for quickly inspecting a random cross-section of
+images from any Drive parent folder — without touching the main review workflow.
+
+```
+uv run python image_sampler.py
+```
+
+Opens a browser UI at `http://127.0.0.1:7860`. No manifest or working folders
+are used; downloaded images are written to `sample_temp/` and deleted
+automatically on exit (Ctrl+C).
+
+**Controls**
+
+| Control | Description |
+|---------|-------------|
+| Parent Folder ID | Drive folder ID whose immediate subfolders are sampled |
+| Folders to sample | How many random subfolders to draw from (default 3) |
+| Images to fetch | Total images to download per session (default 30) |
+| Load | Pick folders, download sample, show first image |
+| ← Prev / Next → | Navigate the downloaded images |
+| Refresh | Pick a new random sample (avoids images already seen this session) |
+
+**To hardcode a folder ID** — set `PARENT_FOLDER_ID` at the top of
+`image_sampler.py` so the field is pre-filled on every launch:
+
+```python
+PARENT_FOLDER_ID = "your_drive_folder_id_here"
+```
+
+---
+
 ## Menu Options
 
 ### 8) Manifest Builder
@@ -178,7 +211,8 @@ google-drive-image-review-pipeline/
   token.json             <- auto-generated on first run (not checked in)
   pyproject.toml         <- dependencies (uv)
   uv.lock                <- locked dependency versions
-  app.py                 <- entry point; run this
+  app.py                 <- main review pipeline entry point
+  image_sampler.py       <- standalone Gradio image sampler (run separately)
   drive_tools/
     client.py            <- Drive auth + listing + download/upload helpers
     image_review.py      <- download, review UI, renumber
@@ -197,4 +231,5 @@ google-drive-image-review-pipeline/
     2026_0001/
     2026_0002/
   backups/               <- local zip archives of accepted/ (not checked in)
+  sample_temp/           <- image sampler scratch folder; cleared on exit (not checked in)
 ```
