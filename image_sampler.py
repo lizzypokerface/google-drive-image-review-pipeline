@@ -9,7 +9,7 @@ import gradio as gr
 from drive_tools.client import PROJECT_ROOT, get_service, list_items, download_file
 
 SAMPLE_TEMP = os.path.join(PROJECT_ROOT, "sample_temp")
-PARENT_FOLDER_ID = ""  # hardcode a Drive folder ID here to pre-fill the UI
+PARENT_FOLDER_ID = "1-syyk4nf-KWLxxehQtkH2oLBU_I_HaQk"  # hardcode a Drive folder ID here to pre-fill the UI
 NUM_FOLDERS = 3
 SAMPLE_SIZE = 30
 IMAGE_MIMETYPES = {
