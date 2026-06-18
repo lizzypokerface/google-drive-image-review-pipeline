@@ -7,7 +7,7 @@ downloads
 rejected
 backups
 manifest.csv
-TO_REVIEW.txt
+sample_temp/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
