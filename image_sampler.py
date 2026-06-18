@@ -5,11 +5,14 @@ import shutil
 from urllib.parse import quote
 
 import gradio as gr
+from dotenv import load_dotenv
 
 from drive_tools.client import PROJECT_ROOT, get_service, list_items, download_file
 
+load_dotenv()
+
 SAMPLE_TEMP = os.path.join(PROJECT_ROOT, "sample_temp")
-PARENT_FOLDER_ID = "1-syyk4nf-KWLxxehQtkH2oLBU_I_HaQk"  # hardcode a Drive folder ID here to pre-fill the UI
+PARENT_FOLDER_ID = os.getenv("PARENT_FOLDER_ID")  # set in .env
 NUM_FOLDERS = 3
 SAMPLE_SIZE = 30
 IMAGE_MIMETYPES = {
