@@ -45,7 +45,23 @@ def list_images_in_folder(service, folder_id):
 def build_ui():
     service = get_service()
 
-    with gr.Blocks(title="Drive Image Sampler") as demo:
+    js = """
+    () => {
+        document.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            if (e.key === 'ArrowLeft') {
+                const btn = document.querySelector('#prev-btn button');
+                if (btn) btn.click();
+            } else if (e.key === 'ArrowRight' || e.key === ' ') {
+                e.preventDefault();
+                const btn = document.querySelector('#next-btn button');
+                if (btn) btn.click();
+            }
+        });
+    }
+    """
+
+    with gr.Blocks(title="Drive Image Sampler", js=js) as demo:
         gr.Markdown("## Drive Image Sampler")
 
         with gr.Row():
@@ -69,20 +85,19 @@ def build_ui():
                 precision=0,
                 scale=1,
             )
-            load_btn = gr.Button("Load", variant="primary", scale=1)
+            load_btn = gr.Button("Refresh", variant="primary", scale=1)
 
         status_label = gr.Markdown("Enter a folder ID and click Load.")
 
         image_display = gr.Image(type="filepath", label="", height=600)
 
         with gr.Row():
-            prev_btn = gr.Button("← Prev", scale=1)
+            prev_btn = gr.Button("← Prev", scale=1, elem_id="prev-btn")
             counter_label = gr.Markdown("—", elem_id="counter")
-            next_btn = gr.Button("Next →", scale=1)
+            next_btn = gr.Button("Next →", scale=1, elem_id="next-btn")
 
         size_label = gr.Markdown("", elem_id="size")
 
-        refresh_btn = gr.Button("Refresh (new random sample)")
 
         paths_state = gr.State([])
         idx_state = gr.State(0)
@@ -163,9 +178,6 @@ def build_ui():
             final_msg = f"Loaded {len(paths)} of {total} images from {len(chosen)} folder(s). ({len(new_seen)} seen total)"
             yield paths.copy(), gr.update(), gr.update(), final_msg, gr.update(), gr.update(), new_seen
 
-        def do_refresh(folder_id, num_folders, sample_size, paths, seen_ids):
-            yield from do_load(folder_id, num_folders, sample_size, seen_ids)
-
         def go_prev(paths, idx):
             if not paths:
                 return idx, None, "—", ""
@@ -181,12 +193,6 @@ def build_ui():
         load_btn.click(
             do_load,
             inputs=[folder_input, num_folders_input, sample_size_input, seen_ids_state],
-            outputs=[paths_state, idx_state, image_display, status_label, counter_label, size_label, seen_ids_state],
-        )
-
-        refresh_btn.click(
-            do_refresh,
-            inputs=[folder_input, num_folders_input, sample_size_input, paths_state, seen_ids_state],
             outputs=[paths_state, idx_state, image_display, status_label, counter_label, size_label, seen_ids_state],
         )
 
