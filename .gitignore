@@ -6,7 +6,8 @@ batch_uploads
 downloads
 rejected
 backups
-TO_REVIEW.txt
+manifest.csv
+sample_temp/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

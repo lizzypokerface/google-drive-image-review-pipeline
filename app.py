@@ -1,38 +1,54 @@
 import os
 
-from drive_tools.client import get_service
-from drive_tools import image_review, batch_sorter, uploader, backup
+from drive_tools.client import get_service, PROJECT_ROOT
+from drive_tools import image_review, batch_sorter, uploader, backup, manifest
+
+DOWNLOADS_DIR = os.path.join(PROJECT_ROOT, 'downloads')
 
 
 def _menu():
     accepted = image_review.count_accepted()
     rejected = image_review.count_rejected()
+    rows = manifest.read_rows()
+    pending_count = sum(1 for r in rows if r['status'] == 'pending')
+    downloaded_count = sum(1 for r in rows if r['status'] == 'downloaded')
     return f"""
 ========================================
  Google Drive Image Pipeline
 ========================================
-1) Download & Review
-   Pull images from a Google Drive folder ID or a local folder path,
-   then review them one by one (Left = Accept, Right = Reject, Esc = stop reviewing).
+1) Download Folders
+   Download the next N pending folders from manifest.csv into downloads/.
 
-2) Batch Sort
+2) Review Downloaded
+   Review all downloaded folders from manifest.csv one by one.
+
+3) Renumber Accepted
+   Rename every file in accepted/ to a 6-digit sequence (000001.jpg,
+   000002.jpg, ...) sorted alphabetically. Preserves original extension.
+
+4) Batch Sort
    Move everything in accepted/ into dated upload batches
    (batch_uploads/YEAR_NNNN/) of a fixed size.
 
-3) Upload Batches
+5) Upload Batches
    Upload every folder in batch_uploads/ to a Google Drive folder ID,
    each as its own subfolder there.
 
-4) Clear Rejected
+6) Clear Rejected
    Permanently delete every file currently in rejected/.
 
-5) Backup Accepted Images
+7) Backup Accepted Images
    Zip everything in accepted/ to a timestamped archive, kept in backups/
    and copied to a destination folder path you provide.
 
-6) Quit
+8) Manifest Builder
+   List all immediate child folders of a Drive parent folder ID into
+   manifest.csv (folder, id, status=pending). Re-running is safe — existing
+   folder IDs are skipped.
+
+9) Quit
 ========================================
- Accepted: {accepted}  |  Rejected: {rejected}
+ Pending: {pending_count}  |  Downloaded: {downloaded_count}  |  Accepted: {accepted}  |  Rejected: {rejected}
 """
 
 _service = None
@@ -45,18 +61,71 @@ def get_drive_service():
     return _service
 
 
-def download_and_review():
-    while True:
-        source = input("Enter a Google Drive Folder ID or a local folder path (blank to return to menu): ").strip()
-        if not source:
-            return
+def download_folders():
+    if not os.path.exists(manifest.MANIFEST_PATH):
+        print("No manifest.csv found. Run 'Manifest Builder' first.")
+        return
 
-        if os.path.isdir(source):
-            image_review.ingest_local_images(source)
-        else:
-            image_review.download_images(get_drive_service(), source)
+    pending = [r for r in manifest.read_rows() if r['status'] == 'pending']
+    if not pending:
+        print("No pending folders in manifest.csv.")
+        return
 
-        image_review.run_review()
+    n_input = input(f"How many folders to download? ({len(pending)} pending, blank = all): ").strip()
+    n = int(n_input) if n_input else len(pending)
+    to_download = pending[:n]
+
+    for row in to_download:
+        safe_name = image_review.sanitize_folder_name(row['folder'])
+        subfolder = os.path.join(DOWNLOADS_DIR, f"{safe_name}_{row['id']}")
+        print(f"\n[{row['folder']}]")
+        image_review.download_images_to(get_drive_service(), row['id'], subfolder)
+        manifest.update_status(row['id'], 'downloaded')
+
+    print(f"\nDone. {len(to_download)} folder(s) downloaded and ready to review.")
+
+
+def review_downloaded():
+    if not os.path.exists(manifest.MANIFEST_PATH):
+        print("No manifest.csv found. Run 'Manifest Builder' first.")
+        return
+
+    downloaded = [r for r in manifest.read_rows() if r['status'] == 'downloaded']
+    if not downloaded:
+        print("No downloaded folders to review. Run 'Download Folders' first.")
+        return
+
+    print(f"{len(downloaded)} folder(s) to review.")
+    for row in downloaded:
+        safe_name = image_review.sanitize_folder_name(row['folder'])
+        subfolder = os.path.join(DOWNLOADS_DIR, f"{safe_name}_{row['id']}")
+
+        if not os.path.isdir(subfolder):
+            print(f"Subfolder missing for '{row['folder']}' — skipping.")
+            continue
+
+        print(f"\nReviewing: {row['folder']}")
+        image_review.run_review(working_dir=subfolder)
+
+        remaining = [f for f in os.listdir(subfolder) if os.path.isfile(os.path.join(subfolder, f))]
+        if not remaining:
+            os.rmdir(subfolder)
+            manifest.update_status(row['id'], 'reviewed')
+        # Esc mid-review: leave status as 'downloaded' so next run resumes here.
+
+
+def run_renumber_accepted():
+    count = image_review.count_accepted()
+    if not count:
+        print("No files in accepted/ to renumber.")
+        return
+    print(f"This will rename {count} file(s) to 000001.ext, 000002.ext, ... (alphabetical order).")
+    confirm = input("Type 'yes' to confirm: ").strip().lower()
+    if confirm != 'yes':
+        print("Cancelled.")
+        return
+    renamed = image_review.renumber_accepted()
+    print(f"Renumbered {renamed} file(s).")
 
 
 def run_batch_sort():
@@ -97,22 +166,36 @@ def run_backup_accepted():
     print(f"Backup created: {zip_file_name} ({zip_size:,} bytes)")
 
 
+def run_manifest_builder():
+    folder_id = input("Enter the parent Google Drive Folder ID (blank to cancel): ").strip()
+    if not folder_id:
+        return
+    added, skipped = manifest.build_manifest(get_drive_service(), folder_id)
+    print(f"Manifest updated: {added} rows added, {skipped} already present.")
+
+
 def main():
     while True:
         print(_menu())
         choice = input("Choose an option: ").strip()
 
         if choice == '1':
-            download_and_review()
+            download_folders()
         elif choice == '2':
-            run_batch_sort()
+            review_downloaded()
         elif choice == '3':
-            run_upload_batches()
+            run_renumber_accepted()
         elif choice == '4':
-            clear_rejected()
+            run_batch_sort()
         elif choice == '5':
-            run_backup_accepted()
+            run_upload_batches()
         elif choice == '6':
+            clear_rejected()
+        elif choice == '7':
+            run_backup_accepted()
+        elif choice == '8':
+            run_manifest_builder()
+        elif choice == '9':
             print("Goodbye.")
             return
         else:

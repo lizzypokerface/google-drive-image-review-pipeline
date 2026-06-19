@@ -2,62 +2,53 @@
 
 ## Problem
 
-I store lots of photos in Google Drive (or sometimes just locally) — often
-spread across many folders, with a lot of clutter mixed in. Periodically that
-needs vetting: keep the good shots, discard the rest, and re-upload a clean,
-space-efficient set.
+I store lots of photos in Google Drive — often spread across many folders,
+with a lot of clutter mixed in. Periodically that needs vetting: keep the
+good shots, discard the rest, and re-upload a clean, space-efficient set.
 
-This tool exists to make that recurring cycle fast:
+This tool makes that recurring cycle fast:
 
-1. Point at an image folder (Drive or local) and download its contents.
-2. Review the images one by one — accept or reject.
-3. Sort the accepted pile into upload-sized batches.
-4. Upload those batches back to Drive.
-
-Run end to end, this keeps only the best images over time, repeatedly, while
-freeing up space from everything that didn't make the cut.
+1. Point at a parent Drive folder and build a manifest of all subfolders.
+2. Download folders in whatever batch size you want.
+3. Review images one by one — accept or reject.
+4. Optionally renumber accepted images sequentially before sorting.
+5. Sort accepted images into upload-sized batches and push them back to Drive.
 
 ## The Full Cycle
 
 ```
-   Drive folder #1  ─┐
-   Drive folder #2  ─┼──►  downloads/  ──► review each image ──┬──► accepted/
-   local folder #3  ─┘     (images only,        (← / →)        │
-                             rest discarded)                    └──► rejected/
-                                                                       │
-                                                                       │ (3) Clear Rejected
-                                                                       ▼
-                                                                  permanently deleted
+[8] Manifest Builder
+     └─ parent Drive folder ──► manifest.csv (folder, id, status=pending)
 
-   accepted/ ──(2) Batch Sort──► batch_uploads/2026_0001/
-                                  batch_uploads/2026_0002/
-                                  ...
+[1] Download Folders
+     └─ next N pending rows ──► downloads/<name>_<id>/  (status → downloaded)
 
-   batch_uploads/* ──(4) Upload Batches──► Drive destination folder
-                                            (each batch as its own subfolder)
+[2] Review Downloaded
+     └─ each downloaded subfolder ──► review (← / →) ──┬──► accepted/
+                                                         └──► rejected/
+                                      (status → reviewed, subfolder deleted)
+
+[3] Renumber Accepted          ← optional
+     └─ accepted/ ──► 000001.ext, 000002.ext, ...
+
+[4] Batch Sort
+     └─ accepted/ ──► batch_uploads/2026_0001/
+                       batch_uploads/2026_0002/  ...
+
+[6] Clear Rejected
+     └─ rejected/ ──► permanently deleted
+
+[5] Upload Batches
+     └─ batch_uploads/* ──► Drive destination folder (each batch as subfolder)
+
+[7] Backup Accepted            ← optional, run any time
+     └─ accepted/ ──► backups/<timestamp>.zip + copy to your path
 ```
 
-One pass through the menu, in order:
+The menu header always shows current counts:
+`Pending | Downloaded | Accepted | Rejected`
 
-1. **Download & Review** — repeat for as many Drive folders or local folders
-   as you have; every image you accept or reject during this step moves into
-   `accepted/` or `rejected/` (you can review images from multiple source
-   folders in the same sitting — they all land in the same two piles).
-2. **Batch Sort** — once you're done reviewing, everything sitting in
-   `accepted/` gets moved into fresh `batch_uploads/YEAR_NNNN/` folders.
-3. **Clear Rejected** — discard everything in `rejected/` for good.
-4. **Upload Batches** — push every folder in `batch_uploads/` up to a Drive
-   folder ID, each batch becoming its own subfolder there.
-
-After step 4, the cycle is complete: only the photos worth keeping survived
-review, got sorted into batches, and ended up back in Drive. Run it again
-next time clutter builds up.
-
-## What It Does
-
-A small local pipeline: pull images out of a Google Drive folder, review them
-one by one (accept/reject), sort the accepted images into numbered batches,
-then upload those batches back to a Google Drive folder.
+---
 
 ## One-time Google Cloud Setup
 
@@ -66,132 +57,179 @@ then upload those batches back to a Google Drive folder.
 3. **APIs & Services → OAuth consent screen** → External → fill in app name + your email → **Add your Gmail as a Test User**
 4. **APIs & Services → Credentials** → Create Credentials → OAuth client ID → Desktop App → Download JSON → rename to `credentials.json` → place it in this folder
 
-## Install Dependencies
+## Install
+
+This project uses [uv](https://docs.astral.sh/uv/) for environment management.
 
 ```
-pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib tqdm Pillow
+uv sync
 ```
 
 ## Run
 
 ```
-python app.py
+uv run python app.py
 ```
 
-On first run a browser window opens for one-time login. After that `token.json` is saved and future runs skip the browser step.
+On first run a browser window opens for one-time login. After that `token.json`
+is saved and future runs skip the browser step.
 
-You'll see a menu with these options:
+---
 
-### 1) Download & Review
+## Image Sampler
 
-Enter either:
-- a Google Drive folder ID (the string at the end of the Drive URL:
-  `drive.google.com/drive/folders/`**`THIS_PART`**), or
-- a local folder path (e.g. `C:\Users\you\Pictures\batch1`) if the photos are already on disk.
+A standalone Gradio tool for quickly inspecting a random cross-section of
+images from any Drive parent folder — without touching the main review workflow.
 
-Only image files are pulled in to `downloads/` — everything else is discarded
-(local files are copied, originals are left untouched). Once that finishes, a
-review window opens automatically:
+```
+uv run python image_sampler.py
+```
+
+Opens a browser UI at `http://127.0.0.1:7860`. No manifest or working folders
+are used; downloaded images are written to `sample_temp/` and deleted
+automatically on exit (Ctrl+C).
+
+**Controls**
+
+| Control | Description |
+|---------|-------------|
+| Parent Folder ID | Drive folder ID whose immediate subfolders are sampled |
+| Folders to sample | How many random subfolders to draw from (default 3) |
+| Images to fetch | Total images to download per session (default 30) |
+| Load | Pick folders, download sample, show first image |
+| ← Prev / Next → | Navigate the downloaded images |
+| Refresh | Pick a new random sample (avoids images already seen this session) |
+
+**To hardcode a folder ID** — set `PARENT_FOLDER_ID` at the top of
+`image_sampler.py` so the field is pre-filled on every launch:
+
+```python
+PARENT_FOLDER_ID = "your_drive_folder_id_here"
+```
+
+---
+
+## Menu Options
+
+### 8) Manifest Builder
+
+Enter a Google Drive parent folder ID. The tool lists all immediate child
+folders and appends them to `manifest.csv` with `status=pending`. Already-present
+folder IDs are skipped, so re-running against the same parent is safe.
+
+**Run this first** to start a session.
+
+---
+
+### 1) Download Folders
+
+Enter how many pending folders to download (blank = all). Each folder's images
+are fetched into `downloads/<name>_<id>/` and its manifest row is marked `downloaded`.
+
+Download in batches — fetch a handful now, review them, then download more.
+
+---
+
+### 2) Review Downloaded
+
+No prompt — walks all `downloaded` manifest rows automatically. For each folder,
+opens the review window:
 
 | Key | Action |
 |-----|--------|
-| ← Left Arrow | Accept current image (moves to `accepted/`) |
-| → Right Arrow | Reject current image (moves to `rejected/`) |
-| Esc | Stop reviewing and return to the menu |
+| ← Left Arrow | Accept → `accepted/` |
+| → Right Arrow | Reject → `rejected/` |
+| Esc | Stop; resume from here next run |
 
-You can keep entering folder IDs — everything accumulates into the same
-`accepted/`/`rejected/` folders. Leave the folder ID blank to return to the menu.
-If you quit mid-review, anything left in `downloads/` is simply picked back up
-next time.
+When a folder's review window closes with all images moved, the empty subfolder
+is deleted and the row is marked `reviewed`. Hitting Esc leaves the row as
+`downloaded` so the next run picks up where you left off.
 
-### 2) Batch Sort
+---
 
-Moves everything currently in `accepted/` into dated batch folders under
-`batch_uploads/`, named `YEAR_NNNN` (e.g. `2026_0001`, `2026_0002`, ...).
-You'll be prompted for:
+### 3) Renumber Accepted
+
+Renames every file in `accepted/` to a 6-digit zero-padded sequence —
+`000001.ext`, `000002.ext`, ... — sorted alphabetically by current filename.
+Original file extensions are preserved. Asks for `yes` confirmation first.
+
+Run this before Batch Sort if you want clean sequential numbering in your
+uploaded batches.
+
+---
+
+### 4) Batch Sort
+
+Moves everything in `accepted/` into dated batch folders under `batch_uploads/`,
+named `YEAR_NNNN`. You'll be prompted for:
 
 - **Year label** — used as the folder name prefix.
-- **Last batch folder number already created** — the script starts numbering at this + 1 (use 0 if starting fresh).
+- **Last batch folder number already created** — starts numbering at this + 1 (use 0 if starting fresh).
 - **Files per batch** — defaults to 500 if left blank.
 
-Files are *moved* (not copied) out of `accepted/` and into the batch folder.
-This matters for the recurring-cycle workflow: if accepted images stuck
-around in `accepted/`, the next Batch Sort run would re-batch (and later
-re-upload) photos already handled in an earlier cycle. Moving them keeps
-`accepted/` representing only "not yet batched" images.
-Duplicate filenames are automatically suffixed (e.g. `photo_001.jpg`) — this
-checks both the current run and whatever's already sitting in the target
-batch folder on disk, so re-running into a folder that already has files
-(e.g. after an interrupted run, or accidentally reusing the same "last batch
-number") renames around them instead of silently overwriting.
+Files are *moved* (not copied) out of `accepted/`. This keeps `accepted/`
+representing only "not yet batched" images across repeated cycles.
 
-### 3) Clear Rejected
+---
 
-Permanently deletes every file in `rejected/`. Asks for a typed `yes` confirmation
-first since this is destructive and not reversible.
+### 5) Upload Batches
 
-### 4) Upload Batches
+Enter a destination Google Drive folder ID. Every folder in `batch_uploads/`
+is uploaded there as its own subfolder. Prints the list and asks for `yes`
+before anything uploads. Safe to re-run after interruption — existing Drive
+folders and files are reused/skipped.
 
-Enter a destination Google Drive folder ID. Every folder currently in
-`batch_uploads/` (e.g. `2026_0001`, `2026_0002`) is uploaded there as its own
-subfolder, preserving the same names and contents.
+---
 
-Before anything uploads, the full list of folders about to go up is printed
-so you can check the destination Drive folder for duplicates first — nothing
-uploads until you type `yes` to confirm.
+### 6) Clear Rejected
 
-Safe to re-run if interrupted: it reuses an existing Drive folder of the same
-name instead of creating a duplicate, and skips any file that's already
-present there by name.
+Permanently deletes every file in `rejected/`. Requires typed `yes` confirmation.
 
-This requires upload permission (`drive.file` scope) in addition to the
-read-only scope used for downloading. If you set this project up before this
-feature existed, delete `token.json` once and re-run so it can re-authorize
-with the new scope.
+---
+
+### 7) Backup Accepted Images
+
+Enter a destination folder path. Creates a timestamped zip of everything in
+`accepted/` (e.g. `accepted_backup_20260619_143022.zip`), saves it to `backups/`
+locally, and copies it to your destination. `accepted/` is left untouched.
+
+---
 
 ## Filename Collisions & Safety
 
-Two different images can legitimately share a filename (e.g. `IMG_0001.jpg`
-from two different cameras/source folders). The pipeline never overwrites one
-with the other:
-
-- **Ingest (Drive download or local folder → `downloads/`)** — before a file
-  is written, its name is checked against everything currently in
-  `downloads/`, `accepted/`, and `rejected/`. A collision gets suffixed
-  (`IMG_0001_1.jpg`, `IMG_0001_2.jpg`, ...) before it ever touches disk.
-- **Review (`downloads/` → `accepted/`/`rejected/`)** — safe by construction,
-  since ingest already guaranteed the name is free in both destination
-  folders.
-- **Batch Sort (`accepted/` → `batch_uploads/<batch>/`)** — checked against
-  both the files being moved in the current run *and* whatever already
-  exists in the destination batch folder on disk, so re-running Batch Sort
-  into a folder that's already partially populated (interrupted run, or
-  re-entering the same "last batch number" by mistake) suffixes the new
-  arrival instead of clobbering the old file.
-- **Upload (`batch_uploads/*` → Drive)** — a file already present by name in
-  the destination Drive folder is skipped, not re-uploaded or replaced, so
-  re-running an interrupted upload is safe.
-
-The one operation that's intentionally destructive is **Clear Rejected** —
-it permanently deletes everything in `rejected/`, gated behind a typed `yes`
-confirmation.
+- **Download** — collision-checked against `accepted/` and `rejected/` before writing; suffixed if needed (`IMG_0001_1.jpg`).
+- **Review** — safe by construction; ingest already guaranteed uniqueness.
+- **Batch Sort** — checked against both the current run and existing files on disk in the target batch folder.
+- **Upload** — files already present in the destination Drive folder are skipped.
+- **Clear Rejected** — the one intentionally destructive operation; gated behind typed `yes`.
 
 ## Folder Structure
 
 ```
-google_drive_downloader/
-  credentials.json     <- you provide this
-  token.json           <- auto-generated on first run
-  app.py                <- run this
+google-drive-image-review-pipeline/
+  credentials.json       <- you provide this (not checked in)
+  token.json             <- auto-generated on first run (not checked in)
+  pyproject.toml         <- dependencies (uv)
+  uv.lock                <- locked dependency versions
+  app.py                 <- main review pipeline entry point
+  image_sampler.py       <- standalone Gradio image sampler (run separately)
   drive_tools/
     client.py            <- Drive auth + listing + download/upload helpers
-    image_review.py       <- download images + accept/reject review UI
-    batch_sorter.py        <- sorts accepted/ into batch_uploads/
-    uploader.py             <- uploads batch_uploads/ folders to Drive
-  downloads/             <- images downloaded, awaiting review
-  accepted/               <- accepted images
-  rejected/                <- rejected images
-  batch_uploads/
+    image_review.py      <- download, review UI, renumber
+    batch_sorter.py      <- sorts accepted/ into batch_uploads/
+    uploader.py          <- uploads batch_uploads/ folders to Drive
+    manifest.py          <- manifest.csv builder + CRUD helpers
+    backup.py            <- zip accepted/ to a timestamped archive
+  docs/
+    workflow.md          <- full end-to-end workflow walkthrough
+  manifest.csv           <- runtime; not checked in
+  downloads/             <- not checked in
+    <name>_<id>/         <- per-subfolder directories (one per manifest row)
+  accepted/              <- accepted images (not checked in)
+  rejected/              <- rejected images (not checked in)
+  batch_uploads/         <- sorted batches ready to upload (not checked in)
     2026_0001/
     2026_0002/
+  backups/               <- local zip archives of accepted/ (not checked in)
+  sample_temp/           <- image sampler scratch folder; cleared on exit (not checked in)
 ```
